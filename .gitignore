@@ -1,0 +1,6 @@
+tmp
+packaged-template.yml
+
+# RubyGems
+.bundle/
+vendor

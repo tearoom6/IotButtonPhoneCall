@@ -1,0 +1,137 @@
+AWSTemplateFormatVersion : '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: Lambda to make a phone call by IoT Button request.
+
+Parameters:
+  ProjectName:
+    Type: String
+    Default: IotButtonPhoneCallProject
+    Description: IoT1Click project name
+  PlacementName:
+    Type: String
+    Default: IotButtonPhoneCallPlacement
+    Description: IoT1Click placement name
+  DeviceDsn:
+    Type: String
+    Description: Device DSN
+    NoEcho: true
+  FunctionName:
+    Type: String
+    Default: IotButtonPhoneCallFunction
+    Description: Lambda function name
+  TwilioAccount:
+    Type: String
+    Description: Twilio account SID
+    NoEcho: true
+  TwilioToken:
+    Type: String
+    Description: Twilio auth token
+    NoEcho: true
+  TwilioTel:
+    Type: String
+    Description: Twilio phone number (E.164 format)
+    NoEcho: true
+  TargetTel:
+    Type: String
+    Description: target phone number (E.164 format)
+    NoEcho: true
+  DynamoDbTableName:
+    Type: String
+    Default: IotButtonPhoneCall
+    Description: DynamoDB table name
+  Message:
+    Type: String
+    Default: Hi. How are you? I'm fine. Thank you!
+    Description: Call message
+
+Resources:
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      Policies:
+        - PolicyName: IotButtonPhoneCallPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+            - Effect: Allow
+              Action:
+              - dynamodb:*
+              - logs:CreateLogGroup
+              - logs:CreateLogStream
+              - logs:PutLogEvents
+              Resource: '*'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: ''
+            Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+  IotButtonPhoneCallFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Ref FunctionName
+      Handler: iot_button_handler.LambdaFunctions::Handler.process
+      Runtime: ruby2.5
+      Timeout: 60
+      MemorySize: 128
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Environment:
+        Variables:
+          TWILIO_ACCOUNT: !Ref TwilioAccount
+          TWILIO_TOKEN: !Ref TwilioToken
+          TWILIO_TEL: !Ref TwilioTel
+          TARGET_TEL: !Ref TargetTel
+          TABLE_NAME: !Ref DynamoDbTableName
+          MESSAGE: !Ref Message
+  LambdaInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !GetAtt IotButtonPhoneCallFunction.Arn
+      Action: lambda:InvokeFunction
+      Principal: iot1click.amazonaws.com
+  IotButtonPhoneCallProject:
+    Type: AWS::IoT1Click::Project
+    Properties:
+      ProjectName: !Ref ProjectName
+      PlacementTemplate:
+        DefaultAttributes:
+          DeviceNo: 0
+        DeviceTemplates:
+          IotButtonPhoneCallTemplate:
+            DeviceType: button
+            CallbackOverrides:
+              onClickCallback: !GetAtt IotButtonPhoneCallFunction.Arn
+  #IotButtonDevice:
+  #  Type: AWS::IoT1Click::Device
+  #  Properties:
+  #    DeviceId: !Ref DeviceDsn
+  #    Enabled: True
+  IotButtonPhoneCallPlacement:
+    Type: AWS::IoT1Click::Placement
+    Properties:
+      ProjectName: !Ref IotButtonPhoneCallProject
+      PlacementName: !Ref PlacementName
+      Attributes:
+        DeviceNo: 1
+      AssociatedDevices:
+        IotButtonPhoneCallTemplate: !Ref DeviceDsn
+  IotButtonPhoneCallTable:
+    Type: AWS::Serverless::SimpleTable
+    Properties:
+      PrimaryKey:
+        Name: device_id
+        Type: String
+      ProvisionedThroughput:
+        ReadCapacityUnits: 1
+        WriteCapacityUnits: 1
+      TableName: !Ref DynamoDbTableName
+
+Outputs:
+  IoTProject:
+    Value: !Ref IotButtonPhoneCallProject
+  Function:
+    Value: !Ref IotButtonPhoneCallFunction
+  Table:
+    Value: !Ref IotButtonPhoneCallTable
